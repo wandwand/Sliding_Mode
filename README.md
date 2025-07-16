@@ -1,4 +1,4 @@
-# Atividade 03: Controladores por Modos Deslizantes
+# Controladores por Modos Deslizantes
 
 ## Descrição do Problema
 
