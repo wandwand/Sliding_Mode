@@ -2,104 +2,105 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 
-# =============================================================================
-# @brief Parâmetros do Sistema (Notação Matemática)
-# =============================================================================
-R = 1.0      # Ω (Resistência de armadura)
-L = 0.5      # H (Indutância de armadura)
-k_m = 0.05   # Nm/A (Constante de torque)
-k_b = 0.05   # V/(rad/s) (Constante CEMF)
-J = 1e-3     # kg·m² (Momento de inércia)
+# Parâmetros do motor
+R = 1.0
+L = 0.5
+km = 0.05
+kb = km
+J = 1e-3
 
-# =============================================================================
-# @brief Perturbação e Parâmetros do Controlador
-# =============================================================================
-T_L = lambda t: 0.1 * np.sin(t)  # Nm (Torque de carga)
-λ = 100.0    # Ganho da superfície deslizante
-K = 6.0      # Ganho de chaveamento
-ε = 0.01     # Coeficiente de suavização
+# Perturbação de carga
+TL = lambda t: 0.1 * np.sin(t)
 
-# =============================================================================
-# @brief Modelo Dinâmico com SMC
-# =============================================================================
-def motor_dynamics(t, x):
-    i, ω = x  # Corrente (A), Velocidade (rad/s)
+# Parâmetros SMC
+lambda_s = 100.0
+K = 100.0  # Ganho aumentado para robustez
+
+# Condições iniciais
+w0 = 1.0  # rad/s
+i0 = 0.0  # A
+
+# Armazenamento do sinal de controle
+u_history = []
+
+# Lei de controle SMC corrigida
+def smc_motor(t, x):
+    global u_history
+    i, w = x
     
-    # Dinâmica nominal (inclui T_L que seria desconhecido na prática)
-    ω̇_nom = (k_m * i - T_L(t)) / J
+    # Superfície deslizante (independente de T_L)
+    s = (km/J) * i + lambda_s * w
     
-    # Superfície deslizante (s = ω̇ + λω)
-    s = ω̇_nom + λ * ω
-    
-    # Lei de controle (u = u_eq + u_sw)
-    u_eq = L * (-λ * ω̇_nom - (R * i + k_b * ω) / L)
-    u_sw = -K * np.tanh(s / ε)
+    # Lei de controle
+    u_eq = (R - lambda_s*L)*i + kb*w  # Termo equivalente
+    u_sw = -K * np.sign(s)            # Termo descontínuo
     u = u_eq + u_sw
     
-    # Equações diferenciais
-    di_dt = (-R * i - k_b * ω + u) / L
-    dω_dt = (k_m * i - T_L(t)) / J
+    # Armazena o sinal de controle para plotagem
+    u_history.append(u)
     
-    return [di_dt, dω_dt]
+    # Dinâmica do sistema
+    dw_dt = (km*i - TL(t)) / J
+    di_dt = (-R*i - kb*w + u) / L
+    return [di_dt, dw_dt]
 
-# =============================================================================
-# @brief Configuração da Simulação
-# =============================================================================
-t_span = (0, 10)       # Intervalo de tempo (s)
-x0 = [0.0, 1.0]        # Condições iniciais [i(0), ω(0)]
-t_eval = np.linspace(*t_span, 2000)  # Pontos de avaliação
+# Simulação
+t_span = (0, 10)
+t_eval = np.linspace(*t_span, 5000)
+sol = solve_ivp(smc_motor, t_span, [i0, w0], t_eval=t_eval)
 
-# =============================================================================
-# @brief Execução da Simulação
-# =============================================================================
-sol = solve_ivp(motor_dynamics, t_span, x0, t_eval=t_eval)
-t = sol.t
-i = sol.y[0]
-ω = sol.y[1]
+# Resultados
+t_sim = sol.t
+i_sim = sol.y[0]
+omega_sim = sol.y[1]
+u_sim = np.array(u_history[:len(t_sim)])  # Ajusta o tamanho
 
-# Cálculo numérico da superfície deslizante (pós-processamento)
-ω̇ = np.gradient(ω, t)
-s = ω̇ + λ * ω
-V = 0.5 * s**2
+# Superfície deslizante s=0: (km/J)*i + lambda_s*w = 0
+w_range = np.linspace(min(omega_sim), max(omega_sim), 100)
+i_surf = -(lambda_s * J / km) * w_range
 
-# =============================================================================
-# @brief Visualização dos Resultados
-# =============================================================================
-plt.figure(figsize=(14, 10))
-
-# Gráfico 1: Variáveis de Estado
-plt.subplot(2, 2, 1)
-plt.plot(t, i, 'b', label='Corrente (i)')
-plt.plot(t, ω, 'r', label='Velocidade (ω)')
-plt.title('Resposta Temporal')
-plt.xlabel('Tempo (s)')
-plt.ylabel('Magnitude')
-plt.legend()
-plt.grid(True)
-
-# Gráfico 2: Retrato de Fase
-plt.subplot(2, 2, 2)
-plt.plot(i, ω, 'g')
-plt.title('Retrato de Fase (i vs ω)')
-plt.xlabel('Corrente (A)')
-plt.ylabel('Velocidade (rad/s)')
-plt.grid(True)
-
-# Gráfico 3: Função de Lyapunov
-plt.subplot(2, 2, 3)
-plt.plot(t, V, 'm')
-plt.title('Função de Lyapunov (V=0.5s²)')
-plt.xlabel('Tempo (s)')
-plt.ylabel('V(t)')
-plt.grid(True)
-
-# Gráfico 4: Superfície Deslizante
-plt.subplot(2, 2, 4)
-plt.plot(t, s, 'c')
-plt.title('Superfície Deslizante (s)')
-plt.xlabel('Tempo (s)')
-plt.ylabel('s(t)')
-plt.grid(True)
-
+# =============================================
+# Gráfico 1: Retrato de Fases
+# =============================================
+plt.style.use('seaborn-v0_8-whitegrid')
+fig1, ax1 = plt.subplots(figsize=(10, 8))
+ax1.plot(i_sim, omega_sim, label='Trajetória do Sistema', color='b', lw=2)
+ax1.plot(i0, w0, 'go', markersize=10, label=f'Início: (i={i0}A, ω={w0}rad/s)')
+ax1.plot(i_sim[-1], omega_sim[-1], 'rs', markersize=10, 
+         label=f'Fim: (i={i_sim[-1]:.2f}A, ω={omega_sim[-1]:.2f}rad/s)')
+ax1.plot(i_surf, w_range, 'r--', lw=2, label='Superfície Deslizante (s=0)')
+ax1.set_title('Retrato de Fases: i-ω com Controle por Modos Deslizantes', fontsize=16)
+ax1.set_xlabel('Corrente de Armadura i(t) [A]', fontsize=12)
+ax1.set_ylabel('Velocidade Angular ω(t) [rad/s]', fontsize=12)
+ax1.legend(fontsize=10, loc='upper right')
+ax1.grid(True)
 plt.tight_layout()
+plt.show()
+
+# =============================================
+# Gráfico 2: Respostas Temporais
+# =============================================
+fig2, (ax_w, ax_i, ax_u) = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+fig2.suptitle('Resposta Temporal do Sistema Controlado', fontsize=16)
+
+# Velocidade Angular ω(t)
+ax_w.plot(t_sim, omega_sim, label='ω(t)', color='blue')
+ax_w.set_ylabel('Velocidade [rad/s]', fontsize=12)
+ax_w.legend(fontsize=10)
+ax_w.grid(True)
+
+# Corrente de Armadura i(t)
+ax_i.plot(t_sim, i_sim, label='i(t)', color='orange')
+ax_i.set_ylabel('Corrente [A]', fontsize=12)
+ax_i.legend(fontsize=10)
+ax_i.grid(True)
+
+# Sinal de Controle u(t)
+ax_u.plot(t_sim, u_sim, label='u(t)', color='purple')
+ax_u.set_ylabel('Tensão [V]', fontsize=12)
+ax_u.set_xlabel('Tempo [s]', fontsize=12)
+ax_u.legend(fontsize=10)
+ax_u.grid(True)
+
+plt.tight_layout(rect=[0, 0, 1, 0.96])
 plt.show()
