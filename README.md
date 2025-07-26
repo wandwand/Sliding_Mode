@@ -20,7 +20,7 @@ O motor DC pode ser modelado por:
 ## Objetivos
 
 ### a) Projeto do Sistema de Controle 
-Projete um controlador por modos deslizantes (SMC) para garantir que w(0) quando t -->∞, assumindo parâmetros conhecidos.
+Projete um controlador por modos deslizantes (SMC) para garantir que w-->0 quando t -->∞, assumindo parâmetros conhecidos.
 
 ### b) Simulação do Sistema 
 Simule o sistema de controle com os seguintes parâmetros:
