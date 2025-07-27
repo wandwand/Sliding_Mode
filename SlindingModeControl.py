@@ -104,3 +104,5 @@ ax_u.grid(True)
 
 plt.tight_layout(rect=[0, 0, 1, 0.96])
 plt.show()
+
+print("Simulação concluída com sucesso!")
